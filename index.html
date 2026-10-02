@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UniGlobal Map - 대학생 다문화 도시 탐방 지도</title>
+    
+    <!-- 1. Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- 2. Tailwind CSS v3 Play CDN (로컬 file:/// 환경에서도 100% 안정 작동) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- 3. Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- 4. Pretendard 웹폰트 -->
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- 5. 필수 기본 스타일 (지도가 무조건 꽉 차서 표시되도록 보장) -->
+    <style>
+        * { box-sizing: border-box; }
+        html, body {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: #f9fafb;
+        }
+        
+        .app-header {
+            height: 60px;
+            min-height: 60px;
+        }
+        .app-body {
+            height: calc(100vh - 60px);
+            width: 100%;
+            display: flex;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #sidebar {
+            width: 400px;
+            min-width: 400px;
+            max-width: 400px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            background-color: #ffffff;
+            border-right: 1px solid #e5e7eb;
+            z-index: 20;
+            transition: all 0.3s ease;
+        }
+
+        #map-wrapper {
+            flex: 1;
+            height: 100%;
+            width: 100%;
+            position: relative;
+            min-width: 0;
+            background-color: #e5e7eb;
+        }
+        #map {
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 100% !important;
+            z-index: 10;
+        }
+
+        .leaflet-popup-content-wrapper {
+            border-radius: 1rem !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15) !important;
+        }
+        .leaflet-popup-content {
+            margin: 0 !important;
+            line-height: 1.4 !important;
+        }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        @media (max-width: 768px) {
+            #sidebar {
+                position: absolute;
+                inset: 0;
+                width: 100%;
+                min-width: 100%;
+                max-width: 100%;
+                z-index: 30;
+            }
+            #sidebar.mobile-hidden {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body class="text-gray-800 flex flex-col">
+
+    <!-- 상단 내비게이션 바 -->
+    <header class="app-header bg-white border-b border-gray-200 flex items-center justify-between px-4 md:px-6 z-20 shadow-sm shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="bg-indigo-600 text-white w-9 h-9 rounded-xl flex items-center justify-center shadow-md">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+            </div>
+            <div>
+                <div class="flex items-center space-x-2">
+                    <h1 class="font-bold text-base md:text-lg text-gray-900 tracking-tight leading-none">UniGlobal Map</h1>
+                    <span class="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-semibold border border-indigo-200 hidden sm:inline-block">다문화 필드워크 지도</span>
+                </div>
+                <p class="text-xs text-gray-500 mt-0.5 hidden sm:block">대학생 다문화 도시 탐방 & 과제 아카이브</p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="toggleMobileView()" id="mobile-toggle-btn" class="md:hidden bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1 cursor-pointer transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path>
+                </svg>
+                <span id="mobile-toggle-text">지도 보기</span>
+            </button>
+
+            <button onclick="openCourseModal()" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3.5 py-1.5 rounded-xl text-xs md:text-sm font-semibold transition flex items-center space-x-2 border border-indigo-200 cursor-pointer shadow-xs">
+                <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                </svg>
+                <span>내 탐방 코스 (<span id="course-count" class="font-bold text-indigo-600">0</span>)</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- 메인 레이아웃 (사이드바 + 지도) -->
+    <div class="app-body">
+        
+        <!-- 왼쪽: 사이드바 -->
+        <aside id="sidebar" class="mobile-hidden">
+            <!-- 1. 지역별 퀵 필터 -->
+            <div class="p-3 bg-gray-50 border-b border-gray-200">
+                <div class="text-xs font-semibold text-gray-500 mb-1.5 flex items-center">
+                    <svg class="w-3.5 h-3.5 mr-1 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                    <span>지역 바로가기</span>
+                </div>
+                <div class="flex space-x-1.5 overflow-x-auto pb-1 no-scrollbar">
+                    <button onclick="setRegion('all')" id="region-all" class="region-btn px-2.5 py-1 rounded-md text-xs font-medium bg-gray-900 text-white whitespace-nowrap transition cursor-pointer">전체</button>
+                    <button onclick="setRegion('ansan')" id="region-ansan" class="region-btn px-2.5 py-1 rounded-md text-xs font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-100 whitespace-nowrap transition cursor-pointer">안산 원곡동</button>
+                    <button onclick="setRegion('itaewon')" id="region-itaewon" class="region-btn px-2.5 py-1 rounded-md text-xs font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-100 whitespace-nowrap transition cursor-pointer">서울 이태원</button>
+                    <button onclick="setRegion('daerim')" id="region-daerim" class="region-btn px-2.5 py-1 rounded-md text-xs font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-100 whitespace-nowrap transition cursor-pointer">서울 대림동</button>
+                    <button onclick="setRegion('dongdaemun')" id="region-dongdaemun" class="region-btn px-2.5 py-1 rounded-md text-xs font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-100 whitespace-nowrap transition cursor-pointer">동대문·혜화</button>
+                    <button onclick="setRegion('incheon')" id="region-incheon" class="region-btn px-2.5 py-1 rounded-md text-xs font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-100 whitespace-nowrap transition cursor-pointer">인천 차이나타운</button>
+                </div>
+            </div>
+
+            <!-- 2. 검색 및 테마 필터 -->
+            <div class="p-3.5 border-b border-gray-100">
+                <div class="relative mb-2.5">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                    </span>
+                    <input type="text" id="search-input" oninput="filterLocations()" placeholder="장소명, 국가, 키워드 검색..." class="w-full pl-9 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition">
+                </div>
+                <div class="flex space-x-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+                    <button onclick="setCategory('all')" id="btn-all" class="category-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white whitespace-nowrap transition cursor-pointer">전체 테마</button>
+                    <button onclick="setCategory('food')" id="btn-food" class="category-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 whitespace-nowrap transition cursor-pointer">식료품/식당</button>
+                    <button onclick="setCategory('culture')" id="btn-culture" class="category-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 whitespace-nowrap transition cursor-pointer">종교/문화</button>
+                    <button onclick="setCategory('community')" id="btn-community" class="category-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 whitespace-nowrap transition cursor-pointer">커뮤니티</button>
+                    <button onclick="setCategory('history')" id="btn-history" class="category-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 whitespace-nowrap transition cursor-pointer">역사/박물관</button>
+                </div>
+            </div>
+
+            <!-- 3. 장소 카드 목록 -->
+            <div id="location-list" class="flex-1 overflow-y-auto p-3.5 space-y-2.5"></div>
+
+            <!-- 하단 상태 바 -->
+            <div class="p-2.5 bg-gray-50 border-t border-gray-200 text-xs text-gray-500 flex justify-between items-center shrink-0">
+                <span>총 <strong id="total-count" class="text-indigo-600 font-bold">0</strong>개 답사 장소</span>
+                <button onclick="fitAllMarkers()" class="text-indigo-600 hover:underline cursor-pointer flex items-center gap-1 font-medium">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path>
+                    </svg>
+                    전체 화면 맞춤
+                </button>
+            </div>
+        </aside>
+
+        <!-- 오른쪽: 지도 영역 -->
+        <main id="map-wrapper">
+            <div id="map"></div>
+
+            <!-- 코스 활성화 플로팅 알림 뱃지 -->
+            <div id="course-floating-bar" class="hidden absolute top-4 left-4 right-4 md:left-auto md:right-4 z-20 bg-indigo-600 text-white p-3 rounded-2xl shadow-xl flex items-center justify-between space-x-3 max-w-sm">
+                <div class="flex items-center space-x-2">
+                    <div class="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center font-bold text-xs">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="text-xs text-indigo-200 font-medium">탐방 코스 동선</div>
+                        <div class="text-xs font-bold"><span id="floating-course-count">0</span>개 스팟 연결선 표시 중</div>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-1.5">
+                    <button onclick="fitCourseBounds()" class="bg-white/20 hover:bg-white/30 text-xs px-2.5 py-1.5 rounded-lg transition font-medium cursor-pointer">코스 줌</button>
+                    <button onclick="openCourseModal()" class="bg-white text-indigo-700 hover:bg-indigo-50 text-xs px-3 py-1.5 rounded-lg transition font-bold shadow-xs cursor-pointer">보기</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 탐방 코스 모달 -->
+    <div id="course-modal" class="fixed inset-0 bg-black/60 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+            <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-indigo-50/70">
+                <div class="flex items-center space-x-2">
+                    <div class="bg-indigo-600 text-white w-7 h-7 rounded-xl flex items-center justify-center">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-base text-gray-900">내 과제 탐방 루트</h3>
+                        <p class="text-xs text-gray-500">순서대로 답사 동선이 지도에 연결됩니다.</p>
+                    </div>
+                </div>
+                <button onclick="closeCourseModal()" class="text-gray-400 hover:text-gray-600 text-2xl font-bold p-1 cursor-pointer leading-none">&times;</button>
+            </div>
+
+            <div id="modal-course-list" class="p-4 overflow-y-auto space-y-2 flex-1"></div>
+
+            <div class="p-3.5 border-t border-gray-100 bg-gray-50 flex flex-col sm:flex-row justify-between items-center gap-2.5">
+                <button onclick="clearCourse()" class="text-xs text-red-500 hover:text-red-700 hover:underline cursor-pointer">
+                    코스 전체 비우기
+                </button>
+                <div class="flex items-center space-x-2 w-full sm:w-auto">
+                    <button onclick="closeCourseModal(); fitCourseBounds();" class="flex-1 sm:flex-none border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer">
+                        지도에서 보기
+                    </button>
+                    <button onclick="copyCourseReport()" class="flex-1 sm:flex-none bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold transition shadow-sm flex items-center justify-center space-x-1 cursor-pointer">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                        </svg>
+                        <span>보고서용 코스 복사</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const locations = [
+            { id: 1, region: "ansan", regionName: "안산 원곡동", name: "원곡동 다문화 음식거리", category: "community", categoryName: "커뮤니티/지원", lat: 37.3235, lng: 126.7905, country: "중국·우즈베키스탄·베트남 등", desc: "국내 최대의 외국인 밀집 주거지이자 상업 지구로, 아시아 각국의 현지 간판과 식료품점이 밀집해 있습니다.", assignmentTip: "외국인 거주 밀집지의 공간적 점유 양상 및 다문화 상업 간판 언어(다국어 병기 실태) 분석 과제에 추천.", address: "경기도 안산시 단원구 원곡동 795" },
+            { id: 2, region: "ansan", regionName: "안산 원곡동", name: "아시아마트 (원곡본점)", category: "food", categoryName: "식료품/식당", lat: 37.3242, lng: 126.7891, country: "동남아·중앙아시아 전역", desc: "국내 유통이 드문 동남아 향신료, 전통 식재료, 열대 채소류를 전문 취급하는 대형 식료품 매장입니다.", assignmentTip: "이주민 소비 공간의 고유 식문화 보존 양상과 이주 노동자의 향수 소비 메커니즘을 탐구할 수 있는 장소.", address: "경기도 안산시 단원구 식사로 18" },
+            { id: 3, region: "ansan", regionName: "안산 원곡동", name: "안산시 글로벌다문화센터", category: "community", categoryName: "커뮤니티/지원", lat: 37.3218, lng: 126.7920, country: "지자체 공공지원", desc: "이주배경 주민 정착 지원, 한국어 교육, 이주민 커뮤니티 상담 등을 총괄하는 공공 지원 허브 기관입니다.", assignmentTip: "지방자치단체의 다문화 통합 지원 정책 실태 및 이주민 대상 공공 서비스 전달 체계 조사 시 인터뷰 스팟.", address: "경기도 안산시 단원구 응봉로 23" },
+            { id: 4, region: "itaewon", regionName: "서울 이태원", name: "서울중앙성원 (이태원 이슬람 사원)", category: "culture", categoryName: "종교/문화", lat: 37.5348, lng: 126.9934, country: "중동 및 전세계 이슬람권", desc: "1976년 건립된 한국 최초의 이슬람 사원으로, 주변 우사단로에 할랄 상권과 무슬림 네트워크가 집중되어 있습니다.", assignmentTip: "종교 시설을 매개로 형성된 에스닉 엔클레이브(Ethnic Enclave)와 도시 종교 다양성 연구에 최적.", address: "서울 용산구 우사단로10길 39" },
+            { id: 5, region: "itaewon", regionName: "서울 이태원", name: "살라암 할랄 레스토랑 & 식료품", category: "food", categoryName: "식료품/식당", lat: 37.5342, lng: 126.9928, country: "터키·아랍권", desc: "공식 할랄(Halal) 인증을 거친 양고기 요리와 전통 아랍 빵, 디저트를 제공하는 이태원의 상징적인 공간입니다.", assignmentTip: "국내 할랄 푸드 수용 과정 및 무슬림 관광객·거주자를 위한 인증 식품 인프라 현황 분석에 유용.", address: "서울 용산구 우사단로 25" },
+            { id: 6, region: "daerim", regionName: "서울 대림동", name: "대림중앙시장 (차이나타운)", category: "food", categoryName: "식료품/식당", lat: 37.4932, lng: 126.8970, country: "중국 동포 (조선족)", desc: "중국 동포 사회의 경제적 중심지로, 옌볜 현지 스타일의 음식점, 마라탕, 꽈배기, 특수 식재료 상점이 즐비합니다.", assignmentTip: "중국 동포 집단 이주 과정과 재외동포 자영업 생태계, 그리고 매스컴의 재현 방식과의 차이를 비교 관찰.", address: "서울 영등포구 대림로 14길 8" },
+            { id: 7, region: "daerim", regionName: "서울 대림동", name: "동포지원주민커뮤니티센터", category: "community", categoryName: "커뮤니티/지원", lat: 37.4919, lng: 126.8955, country: "중국 동포 네트워크", desc: "동포 비자 문제, 법률 상담, 한중 문화교류 행사를 주도하는 풀뿌리 민간 지원 센터입니다.", assignmentTip: "이주민 스스로 구축한 상조회 네트워크 및 한국 사회 적응 과정에서의 권익 보호 운동사 과제에 추천.", address: "서울 영등포구 디지털로 37길" },
+            { id: 8, region: "dongdaemun", regionName: "동대문·혜화", name: "동대문 중앙아시아 거리 (사마르칸트)", category: "food", categoryName: "식료품/식당", lat: 37.5651, lng: 127.0062, country: "우즈베키스탄·러시아·몽골", desc: "러시아 보따리 상인 시절부터 형성된 거리로, 우즈베크 양꼬치(샤슬릭), 전통 빵(리포시카), 몽골 타운이 밀집해 있습니다.", assignmentTip: "동대문 패션 상권의 무역 배후지로서 발달한 중앙아시아 물류 및 요식업 집적 공간 연구에 적합.", address: "서울 중구 마른내로 157-1" },
+            { id: 9, region: "dongdaemun", regionName: "동대문·혜화", name: "혜화동 필리핀 알뜰장터 (혜화동 성당 앞)", category: "culture", categoryName: "종교/문화", lat: 37.5843, lng: 127.0019, country: "필리핀", desc: "매주 일요일 필리핀어(타갈로그어) 미사가 끝난 후 열리는 정기 노점 장터로, 일요 휴일을 공유하는 소통의 장입니다.", assignmentTip: "주말 일시적으로 점유되는 공공 보도 공간의 민족적 장소성과 가톨릭 신앙 중심 커뮤니티 결속력 관찰.", address: "서울 종로구 창경궁로 288" },
+            { id: 10, region: "incheon", regionName: "인천 차이나타운", name: "인천 차이나타운 & 짜장면박물관", category: "history", categoryName: "역사/박물관", lat: 37.4754, lng: 126.6179, country: "초기 화교 역사", desc: "1883년 인천항 개항 후 형성된 한국 최초의 조계지 기반 화교 정착지로, 현재는 주요 역사 문화 관광지로 재조명받고 있습니다.", assignmentTip: "역사적 정착지와 현대 다문화 지구의 차이점, 그리고 지자체의 에스닉 관광 자원화 전략 비교 연구.", address: "인천 중구 차이나타운로 56-14" }
+        ];
+
+        const regionCoordinates = {
+            all: { center: [37.4500, 126.8500], zoom: 11 },
+            ansan: { center: [37.3235, 126.7905], zoom: 15 },
+            itaewon: { center: [37.5348, 126.9934], zoom: 16 },
+            daerim: { center: [37.4932, 126.8970], zoom: 16 },
+            dongdaemun: { center: [37.5750, 127.0040], zoom: 14 },
+            incheon: { center: [37.4754, 126.6179], zoom: 16 }
+        };
+
+        const categoryMeta = {
+            food: { bg: "#f59e0b", svg: '<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>' },
+            culture: { bg: "#10b981", svg: '<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>' },
+            community: { bg: "#6366f1", svg: '<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>' },
+            history: { bg: "#ef4444", svg: '<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z"></path></svg>' }
+        };
+
+        let currentCategory = 'all';
+        let currentRegion = 'all';
+        let myCourse = [];
+        let map = null;
+        let markers = {};
+        let coursePolyline = null;
+        let isMobileListOpen = false;
+
+        function initMap() {
+            try {
+                const mapContainer = document.getElementById('map');
+                if (!mapContainer) return;
+
+                map = L.map('map', { zoomControl: true, attributionControl: true }).setView(regionCoordinates.all.center, regionCoordinates.all.zoom);
+                L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+
+                setTimeout(() => {
+                    if (map) {
+                        map.invalidateSize();
+                        fitAllMarkers();
+                    }
+                }, 200);
+
+                filterLocations();
+            } catch (err) {
+                console.error("Map init error:", err);
+            }
+        }
+
+        function createCustomIcon(loc) {
+            const courseIdx = myCourse.findIndex(item => item.id === loc.id);
+            const isCourse = courseIdx > -1;
+            const meta = categoryMeta[loc.category] || { bg: "#6366f1", svg: "" };
+            let htmlStr = isCourse
+                ? `<div style="background-color: #4338ca; width: 32px; height: 32px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-size: 13px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); border: 2.5px solid white;">${courseIdx + 1}</div>`
+                : `<div style="background-color: ${meta.bg}; width: 30px; height: 30px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); border: 2px solid white;">${meta.svg}</div>`;
+            return L.divIcon({ className: '', html: htmlStr, iconSize: [32, 32], iconAnchor: [16, 16], popupAnchor: [0, -16] });
+        }
+
+        function renderLocations(data) {
+            const listEl = document.getElementById('location-list');
+            listEl.innerHTML = '';
+            document.getElementById('total-count').innerText = data.length;
+            if (!map) return;
+            Object.values(markers).forEach(m => map.removeLayer(m));
+            markers = {};
+            if (data.length === 0) {
+                listEl.innerHTML = '<div class="text-center py-16 text-gray-400 text-xs">조건에 맞는 탐방 장소가 없습니다.</div>';
+                return;
+            }
+            data.forEach(loc => {
+                const isAdded = myCourse.some(item => item.id === loc.id);
+                const courseIdx = myCourse.findIndex(item => item.id === loc.id);
+                const card = document.createElement('div');
+                card.className = `border rounded-2xl p-3.5 transition cursor-pointer relative ${isAdded ? 'bg-indigo-50/50 border-indigo-300 shadow-xs' : 'bg-white border-gray-200 hover:border-indigo-200 hover:shadow-sm'}`;
+                card.onclick = () => focusLocation(loc);
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-1.5">
+                        <div class="flex items-center space-x-1.5">
+                            <span class="px-2 py-0.5 bg-gray-100 text-gray-700 rounded-md text-xs font-semibold">${loc.regionName}</span>
+                            <span class="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-md text-xs font-semibold">${loc.categoryName}</span>
+                        </div>
+                        <button onclick="event.stopPropagation(); toggleCourse(${loc.id})" class="p-1 rounded-lg text-xs transition cursor-pointer ${isAdded ? 'text-indigo-600 font-bold bg-indigo-100' : 'text-gray-400 hover:text-indigo-600 hover:bg-gray-100'}">
+                            ${isAdded ? `★ #${courseIdx + 1}` : '☆ 담기'}
+                        </button>
+                    </div>
+                    <h4 class="font-bold text-gray-900 text-sm mb-1">${loc.name}</h4>
+                    <p class="text-xs text-gray-500 mb-1.5">${loc.address}</p>
+                    <p class="text-xs text-gray-600 bg-gray-50 p-2 rounded-xl mb-1.5 line-clamp-2 leading-relaxed">${loc.desc}</p>
+                    <div class="text-xs text-indigo-800 bg-indigo-50/70 p-2 rounded-xl border border-indigo-100/60 leading-relaxed">
+                        <span class="font-bold">과제 팁:</span> ${loc.assignmentTip}
+                    </div>
+                `;
+                listEl.appendChild(card);
+
+                const marker = L.marker([loc.lat, loc.lng], { icon: createCustomIcon(loc) }).addTo(map);
+                marker.bindPopup(`
+                    <div style="padding: 12px; max-width: 250px;">
+                        <span style="font-size: 11px; background: #e0e7ff; color: #4338ca; padding: 2px 6px; border-radius: 4px; font-weight: bold;">${loc.regionName}</span>
+                        <h3 style="font-size: 14px; font-weight: bold; margin: 4px 0; color: #111827;">${loc.name}</h3>
+                        <p style="font-size: 11px; color: #4b5563; margin-bottom: 6px;">${loc.address}</p>
+                        <p style="font-size: 12px; color: #374151; margin-bottom: 8px; line-height: 1.3;">${loc.desc}</p>
+                        <button onclick="toggleCourse(${loc.id})" style="width: 100%; padding: 6px; border-radius: 8px; font-size: 11px; font-weight: bold; cursor: pointer; border: none; background: ${isAdded ? '#fee2e2; color: #dc2626;' : '#4f46e5; color: white;'}">
+                            ${isAdded ? '코스에서 제거' : '+ 내 탐방 코스에 추가'}
+                        </button>
+                    </div>
+                `);
+                markers[loc.id] = marker;
+            });
+            updateCoursePolyline();
+        }
+
+        function focusLocation(loc) {
+            if (!map) return;
+            map.flyTo([loc.lat, loc.lng], 16, { duration: 0.8 });
+            if (markers[loc.id]) markers[loc.id].openPopup();
+            if (window.innerWidth < 768 && isMobileListOpen) toggleMobileView();
+        }
+
+        function fitAllMarkers() {
+            if (!map) return;
+            const markerArray = Object.values(markers);
+            if (markerArray.length > 0) map.fitBounds(L.featureGroup(markerArray).getBounds(), { padding: [40, 40], maxZoom: 15 });
+        }
+
+        function setRegion(region) {
+            currentRegion = region;
+            document.querySelectorAll('.region-btn').forEach(b => {
+                b.className = "region-btn px-2.5 py-1 rounded-md text-xs font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-100 whitespace-nowrap transition cursor-pointer";
+            });
+            const active = document.getElementById(`region-${region}`);
+            if (active) active.className = "region-btn px-2.5 py-1 rounded-md text-xs font-medium bg-gray-900 text-white whitespace-nowrap transition cursor-pointer";
+            if (map && regionCoordinates[region]) map.flyTo(regionCoordinates[region].center, regionCoordinates[region].zoom, { duration: 0.8 });
+            filterLocations();
+        }
+
+        function setCategory(cat) {
+            currentCategory = cat;
+            document.querySelectorAll('.category-btn').forEach(b => {
+                b.className = "category-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 whitespace-nowrap transition cursor-pointer";
+            });
+            const active = document.getElementById(`btn-${cat}`);
+            if (active) active.className = "category-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white whitespace-nowrap transition cursor-pointer";
+            filterLocations();
+        }
+
+        function filterLocations() {
+            const query = (document.getElementById('search-input')?.value || '').trim().toLowerCase();
+            const filtered = locations.filter(loc => {
+                const matchRegion = currentRegion === 'all' || loc.region === currentRegion;
+                const matchCategory = currentCategory === 'all' || loc.category === currentCategory;
+                const matchQuery = !query || loc.name.toLowerCase().includes(query) || loc.desc.toLowerCase().includes(query) || loc.country.toLowerCase().includes(query) || loc.address.toLowerCase().includes(query) || loc.assignmentTip.toLowerCase().includes(query);
+                return matchRegion && matchCategory && matchQuery;
+            });
+            renderLocations(filtered);
+        }
+
+        function toggleCourse(id) {
+            const loc = locations.find(l => l.id === id);
+            const index = myCourse.findIndex(item => item.id === id);
+            if (index > -1) myCourse.splice(index, 1);
+            else myCourse.push(loc);
+            const count = myCourse.length;
+            document.getElementById('course-count').innerText = count;
+            document.getElementById('floating-course-count').innerText = count;
+            const floatingBar = document.getElementById('course-floating-bar');
+            if (count >= 2) floatingBar.classList.remove('hidden');
+            else floatingBar.classList.add('hidden');
+            filterLocations();
+        }
+
+        function updateCoursePolyline() {
+            if (!map) return;
+            if (coursePolyline) { map.removeLayer(coursePolyline); coursePolyline = null; }
+            if (myCourse.length >= 2) {
+                const latlngs = myCourse.map(loc => [loc.lat, loc.lng]);
+                coursePolyline = L.polyline(latlngs, { color: '#4f46e5', weight: 3.5, opacity: 0.85, dashArray: '8, 8', lineJoin: 'round' }).addTo(map);
+            }
+        }
+
+        function fitCourseBounds() {
+            if (!map || myCourse.length === 0) return;
+            if (myCourse.length === 1) { map.flyTo([myCourse[0].lat, myCourse[0].lng], 15); return; }
+            map.fitBounds(L.latLngBounds(myCourse.map(l => [l.lat, l.lng])), { padding: [60, 60], maxZoom: 15 });
+        }
+
+        function openCourseModal() {
+            const listEl = document.getElementById('modal-course-list');
+            listEl.innerHTML = '';
+            if (myCourse.length === 0) {
+                listEl.innerHTML = '<div class="text-center py-10 text-gray-400 text-xs">담아둔 탐방 장소가 없습니다.</div>';
+            } else {
+                myCourse.forEach((loc, idx) => {
+                    const row = document.createElement('div');
+                    row.className = "flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-2xl";
+                    row.innerHTML = `
+                        <div class="flex items-center space-x-2.5">
+                            <span class="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shrink-0">${idx + 1}</span>
+                            <div>
+                                <h4 class="font-bold text-xs text-gray-900">${loc.name}</h4>
+                                <p class="text-xs text-gray-500">${loc.regionName} · ${loc.categoryName}</p>
+                            </div>
+                        </div>
+                        <button onclick="toggleCourse(${loc.id}); openCourseModal();" class="text-gray-400 hover:text-red-500 p-1 cursor-pointer transition text-xs font-bold">삭제</button>
+                    `;
+                    listEl.appendChild(row);
+                });
+            }
+            document.getElementById('course-modal').classList.remove('hidden');
+        }
+
+        function closeCourseModal() { document.getElementById('course-modal').classList.add('hidden'); }
+
+        function clearCourse() {
+            if (myCourse.length === 0) return;
+            if (confirm("등록된 모든 탐방 코스를 비우시겠습니까?")) {
+                myCourse = [];
+                document.getElementById('course-count').innerText = 0;
+                document.getElementById('floating-course-count').innerText = 0;
+                document.getElementById('course-floating-bar').classList.add('hidden');
+                openCourseModal();
+                filterLocations();
+            }
+        }
+
+        function copyCourseReport() {
+            if (myCourse.length === 0) { alert("복사할 탐방 코스가 없습니다."); return; }
+            let text = `[UniGlobal Map 대학생 다문화 도시 탐방 보고서 동선]\n`;
+            text += `생성일시: ${new Date().toLocaleDateString('ko-KR')} | 총 ${myCourse.length}개 스팟\n--------------------------------------------------\n\n`;
+            myCourse.forEach((loc, idx) => {
+                text += `${idx + 1}. ${loc.name} [${loc.regionName} / ${loc.categoryName}]\n   - 주소: ${loc.address}\n   - 주요특징: ${loc.desc}\n   - 과제 분석 포인트: ${loc.assignmentTip}\n\n`;
+            });
+            text += `--------------------------------------------------\n* UniGlobal Map 과제 아카이브에서 생성된 답사 코스입니다.`;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(() => { alert("탐방 코스가 복사되었습니다!"); closeCourseModal(); });
+            } else { fallbackCopy(text); }
+        }
+
+        function fallbackCopy(text) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); alert("탐방 코스가 복사되었습니다!"); closeCourseModal(); } catch (err) { alert("복사 실패"); }
+            document.body.removeChild(ta);
+        }
+
+        function toggleMobileView() {
+            const sidebar = document.getElementById('sidebar');
+            const toggleText = document.getElementById('mobile-toggle-text');
+            isMobileListOpen = !isMobileListOpen;
+            if (isMobileListOpen) {
+                sidebar.classList.remove('mobile-hidden');
+                toggleText.innerText = "지도 보기";
+            } else {
+                sidebar.classList.add('mobile-hidden');
+                toggleText.innerText = "목록 보기";
+                if (map) setTimeout(() => map.invalidateSize(), 100);
+            }
+        }
+
+        window.addEventListener('resize', () => { if (map) map.invalidateSize(); });
+        window.addEventListener('DOMContentLoaded', initMap);
+        window.addEventListener('load', () => { if (map) map.invalidateSize(); });
+    </script>
+</body>
+</html>
